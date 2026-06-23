@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "UserSyncState": {
+      "title": "UserSyncState",
+      "description": "Entire synchronized state for a user's Distribution Management System",
+      "type": "object",
+      "properties": {
+        "customerTypes": {
+          "type": "array",
+          "description": "Customer categories"
+        },
+        "customers": {
+          "type": "array",
+          "description": "List of customers"
+        },
+        "warehouses": {
+          "type": "array",
+          "description": "Warehouses/stock locations"
+        },
+        "saleReps": {
+          "type": "array",
+          "description": "Sales representatives"
+        },
+        "items": {
+          "type": "array",
+          "description": "Inventory items and prices"
+        },
+        "saleOrders": {
+          "type": "array",
+          "description": "Existing sale orders"
+        },
+        "invoices": {
+          "type": "array",
+          "description": "Existing invoices"
+        },
+        "config": {
+          "type": "object",
+          "description": "General system configurations and company info"
+        }
+      },
+      "required": []
+    }
+  },
+  "firestore": {
+    "/users/{userId}/state/{stateId}": {
+      "schema": "UserSyncState",
+      "description": "User specific application state"
+    }
+  }
+}
