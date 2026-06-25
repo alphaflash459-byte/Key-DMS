@@ -21,15 +21,21 @@ interface SidebarProps {
   onViewChange: (view: string) => void;
   user: User | any;
   onLogout: () => void;
+  isOpen?: boolean;
 }
 
-export default function Sidebar({ currentView, onViewChange, user, onLogout }: SidebarProps) {
+export default function Sidebar({ currentView, onViewChange, user, onLogout, isOpen = true }: SidebarProps) {
   const [customerOpen, setCustomerOpen] = useState(true);
   const [reportsOpen, setReportsOpen] = useState(true);
   const [setupOpen, setSetupOpen] = useState(true);
 
   return (
-    <aside id="dms-sidebar" className="w-68 bg-white/5 border-r border-white/10 backdrop-blur-xl flex flex-col h-screen select-none shrink-0 font-sans text-white z-20">
+    <aside 
+      id="dms-sidebar" 
+      className={`bg-white/5 border-r border-white/10 backdrop-blur-xl flex flex-col h-screen select-none shrink-0 font-sans text-white z-20 transition-all duration-300 ease-in-out ${
+        isOpen ? 'w-68 opacity-100 border-r border-white/10' : 'w-0 opacity-0 border-r-0 overflow-hidden pointer-events-none'
+      }`}
+    >
       {/* Top Left Branding block - matching RAKOT TCS logo background with Frosted Glass look */}
       <div className="bg-white/10 px-4 py-3 flex items-center gap-2 text-white h-14 border-b border-white/10">
         <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center border border-white/20 shadow-lg shrink-0">

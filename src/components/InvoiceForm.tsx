@@ -31,6 +31,7 @@ interface InvoiceFormProps {
   setInvoices: (invoices: Invoice[]) => void;
   initialSelectedSO?: SaleOrder | null;
   onClearInitialSO?: () => void;
+  onLineItemAdded?: () => void;
 }
 
 export default function InvoiceForm({
@@ -43,7 +44,8 @@ export default function InvoiceForm({
   invoices,
   setInvoices,
   initialSelectedSO,
-  onClearInitialSO
+  onClearInitialSO,
+  onLineItemAdded
 }: InvoiceFormProps) {
   // Toggle between Form and Register List view
   const [activeTab, setActiveTab] = useState<'form' | 'list'>('form');
@@ -222,6 +224,7 @@ export default function InvoiceForm({
     };
     setInvoiceLines([...invoiceLines, newLine]);
     setSelectedLineItemToAdd(''); // clear dropdown placeholder
+    onLineItemAdded?.();
   };
 
   // Line modification functions

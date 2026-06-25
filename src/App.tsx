@@ -42,6 +42,7 @@ import {
 
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('invoice-non-tax'); // Default to INVOICE NON TAX as requested in screen description!
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
   // --- AUTHENTICATION STATE ---
   const [user, setUser] = useState<User | null>(null);
@@ -304,12 +305,21 @@ export default function App() {
       <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-purple-600/15 rounded-full blur-[130px] pointer-events-none z-0"></div>
 
       {/* Sidebar Component */}
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} user={activeUser} onLogout={handleLogout} />
+      <Sidebar 
+        currentView={currentView} 
+        onViewChange={setCurrentView} 
+        user={activeUser} 
+        onLogout={handleLogout} 
+        isOpen={isSidebarOpen} 
+      />
 
       {/* Main Panel Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden z-10">
         {/* Top Header Navigation matching active screen titles */}
-        <Header currentView={currentView} />
+        <Header 
+          currentView={currentView} 
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        />
 
         {/* View content switch board */}
         <main className="flex-1 overflow-y-auto bg-[#0b0f19]/30 backdrop-blur-sm">
@@ -357,6 +367,7 @@ export default function App() {
               setInvoices={setInvoices}
               initialSelectedSO={selectedSOToInvoice}
               onClearInitialSO={clearSelectedSO}
+              onLineItemAdded={() => setIsSidebarOpen(false)}
             />
           )}
 
@@ -372,6 +383,7 @@ export default function App() {
               setInvoices={setInvoices}
               initialSelectedSO={selectedSOToInvoice}
               onClearInitialSO={clearSelectedSO}
+              onLineItemAdded={() => setIsSidebarOpen(false)}
             />
           )}
 

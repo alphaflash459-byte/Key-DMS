@@ -2,9 +2,10 @@ import { Menu } from 'lucide-react';
 
 interface HeaderProps {
   currentView: string;
+  onToggleSidebar?: () => void;
 }
 
-export default function Header({ currentView }: HeaderProps) {
+export default function Header({ currentView, onToggleSidebar }: HeaderProps) {
   const getFriendlyTitle = () => {
     switch (currentView) {
       case 'setup-customer-type':
@@ -30,7 +31,10 @@ export default function Header({ currentView }: HeaderProps) {
     <header className="bg-white/5 backdrop-blur-md border-b border-white/10 h-14 text-white flex items-center justify-between px-4 shrink-0 select-none z-10">
       {/* Left section: Hamburger / Navigation info */}
       <div className="flex items-center gap-3">
-        <button className="text-white hover:bg-white/10 p-1.5 rounded transition-colors focus:outline-none">
+        <button 
+          onClick={onToggleSidebar}
+          className="text-white hover:bg-white/10 p-1.5 rounded transition-colors focus:outline-none cursor-pointer"
+        >
           <Menu className="w-5 h-5 text-slate-300" />
         </button>
         <span className="font-semibold text-base tracking-wider text-white/90 hidden md:inline-block">
