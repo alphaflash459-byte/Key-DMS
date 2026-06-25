@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import CustomerManagement from './components/CustomerManagement';
@@ -11,7 +11,6 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './firebase';
 import { 
   loadUserDataFromCloud, 
-  saveUserDataFieldToCloud, 
   saveFullUserDataToCloud 
 } from './sync';
 import AuthScreen from './components/AuthScreen';
@@ -49,6 +48,7 @@ export default function App() {
   const [demoUser, setDemoUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [syncingFromCloud, setSyncingFromCloud] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const activeUser = user || demoUser;
 
@@ -102,32 +102,41 @@ export default function App() {
       if (currentUser) {
         setUser(currentUser);
         setSyncingFromCloud(true);
-        const cloudData = await loadUserDataFromCloud(currentUser.uid);
-        if (cloudData) {
-          if (cloudData.customerTypes) setCustomerTypes(cloudData.customerTypes);
-          if (cloudData.customers) setCustomers(cloudData.customers);
-          if (cloudData.warehouses) setWarehouses(cloudData.warehouses);
-          if (cloudData.saleReps) setSaleReps(cloudData.saleReps);
-          if (cloudData.items) setItems(cloudData.items);
-          if (cloudData.saleOrders) setSaleOrders(cloudData.saleOrders);
-          if (cloudData.invoices) setInvoices(cloudData.invoices);
-          if (cloudData.config) setConfig(cloudData.config);
-        } else {
-          // If cloud has no state (new user), upload our existing state
-          await saveFullUserDataToCloud(currentUser.uid, {
-            customerTypes,
-            customers,
-            warehouses,
-            saleReps,
-            items,
-            saleOrders,
-            invoices,
-            config
-          });
+        setIsLoaded(false);
+        isFirstSyncRef.current = true;
+        try {
+          const cloudData = await loadUserDataFromCloud(currentUser.uid);
+          if (cloudData) {
+            if (cloudData.customerTypes) setCustomerTypes(cloudData.customerTypes);
+            if (cloudData.customers) setCustomers(cloudData.customers);
+            if (cloudData.warehouses) setWarehouses(cloudData.warehouses);
+            if (cloudData.saleReps) setSaleReps(cloudData.saleReps);
+            if (cloudData.items) setItems(cloudData.items);
+            if (cloudData.saleOrders) setSaleOrders(cloudData.saleOrders);
+            if (cloudData.invoices) setInvoices(cloudData.invoices);
+            if (cloudData.config) setConfig(cloudData.config);
+          } else {
+            // If cloud has no state (new user), upload our existing state
+            await saveFullUserDataToCloud(currentUser.uid, {
+              customerTypes,
+              customers,
+              warehouses,
+              saleReps,
+              items,
+              saleOrders,
+              invoices,
+              config
+            });
+          }
+        } catch (err) {
+          console.error('Error loading data from cloud on auth state change:', err);
+        } finally {
+          setSyncingFromCloud(false);
+          setIsLoaded(true);
         }
-        setSyncingFromCloud(false);
       } else {
         setUser(null);
+        setIsLoaded(true);
       }
       setAuthLoading(false);
     });
@@ -138,6 +147,8 @@ export default function App() {
   const handleLogout = async () => {
     try {
       setAuthLoading(true);
+      isFirstSyncRef.current = true;
+      setIsLoaded(false);
       if (user) {
         await signOut(auth);
       }
@@ -159,62 +170,81 @@ export default function App() {
     }
   };
 
-  // --- SAVE HOOKS TO LOCAL STORAGE & CLOUD ---
+  // --- SAVE HOOKS TO LOCAL STORAGE ---
   useEffect(() => {
     localStorage.setItem('dms_customer_types', JSON.stringify(customerTypes));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'customerTypes', customerTypes);
-    }
-  }, [customerTypes, user, syncingFromCloud]);
+  }, [customerTypes]);
 
   useEffect(() => {
     localStorage.setItem('dms_customers', JSON.stringify(customers));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'customers', customers);
-    }
-  }, [customers, user, syncingFromCloud]);
+  }, [customers]);
 
   useEffect(() => {
     localStorage.setItem('dms_warehouses', JSON.stringify(warehouses));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'warehouses', warehouses);
-    }
-  }, [warehouses, user, syncingFromCloud]);
+  }, [warehouses]);
 
   useEffect(() => {
     localStorage.setItem('dms_sale_reps', JSON.stringify(saleReps));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'saleReps', saleReps);
-    }
-  }, [saleReps, user, syncingFromCloud]);
+  }, [saleReps]);
 
   useEffect(() => {
     localStorage.setItem('dms_items', JSON.stringify(items));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'items', items);
-    }
-  }, [items, user, syncingFromCloud]);
+  }, [items]);
 
   useEffect(() => {
     localStorage.setItem('dms_sale_orders', JSON.stringify(saleOrders));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'saleOrders', saleOrders);
-    }
-  }, [saleOrders, user, syncingFromCloud]);
+  }, [saleOrders]);
 
   useEffect(() => {
     localStorage.setItem('dms_invoices', JSON.stringify(invoices));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'invoices', invoices);
-    }
-  }, [invoices, user, syncingFromCloud]);
+  }, [invoices]);
 
   useEffect(() => {
     localStorage.setItem('dms_config', JSON.stringify(config));
-    if (user && !syncingFromCloud) {
-       saveUserDataFieldToCloud(user.uid, 'config', config);
+  }, [config]);
+
+  // --- CLOUD SYNC DEBOUNCED ENGINE ---
+  const isFirstSyncRef = useRef(true);
+
+  useEffect(() => {
+    if (!user || !isLoaded) return;
+
+    if (isFirstSyncRef.current) {
+      isFirstSyncRef.current = false;
+      return;
     }
-  }, [config, user, syncingFromCloud]);
+
+    const timer = setTimeout(async () => {
+      try {
+        console.log('Debounced saving entire state to Firestore for user:', user.uid);
+        await saveFullUserDataToCloud(user.uid, {
+          customerTypes,
+          customers,
+          warehouses,
+          saleReps,
+          items,
+          saleOrders,
+          invoices,
+          config
+        });
+      } catch (err) {
+        console.error('Error in debounced cloud sync:', err);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    user,
+    isLoaded,
+    customerTypes,
+    customers,
+    warehouses,
+    saleReps,
+    items,
+    saleOrders,
+    invoices,
+    config
+  ]);
 
 
   // Action: Convert Sale Order into an Invoice
@@ -246,7 +276,7 @@ export default function App() {
             <span className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></span>
             <Activity className="w-8 h-8 text-white animate-pulse" />
           </div>
-          <p className="text-xs font-semibold tracking-widest text-cyan-300 uppercase animate-pulse">Loading System State / កំពុងដំណើរការ...</p>
+          <p className="text-xs font-semibold tracking-widest text-cyan-300 uppercase animate-pulse">Loading System State...</p>
         </div>
       </div>
     );

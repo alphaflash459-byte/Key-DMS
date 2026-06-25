@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CustomerInfo, Warehouse, SaleRep, Item, SaleOrder } from '../types';
+import { calculateFreePromoQty, calculateDividedPrice } from '../utils';
 import { Plus, Trash2, Edit, Save, X, Eye, FileSpreadsheet, ListFilter, ShoppingBag, PlusCircle, CheckCircle, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SearchableCustomerSelect } from './SearchableCustomerSelect';
@@ -45,6 +46,8 @@ export default function SaleOrderManagement({
     itemId: string;
     description: string;
     qty: number;
+    freeQty?: number;
+    promoMode?: 'FREE' | 'DIVIDED' | 'NONE';
     um: string;
     price: number;
     subTotal: number;
@@ -60,19 +63,64 @@ export default function SaleOrderManagement({
     const item = items.find((i) => i.id === currentItemId);
     if (!item) return;
 
+    const hasPromo = item.promoPackages && item.promoPackages.length > 0;
+    const isExact = hasPromo && item.promoPackages.some(p => p.buyQty > 0 && currentQty % p.buyQty === 0);
+    const mode = hasPromo ? (isExact ? 'FREE' : 'DIVIDED') : 'FREE';
+
+    let finalPrice = item.price;
+    let finalFreeQty = 0;
+
+    if (hasPromo) {
+      if (mode === 'FREE') {
+        const { freeQty } = calculateFreePromoQty(item, currentQty);
+        finalFreeQty = freeQty || 0;
+        finalPrice = item.price;
+      } else {
+        finalFreeQty = 0;
+        const { price: divPrice } = calculateDividedPrice(item, currentQty);
+        finalPrice = divPrice;
+      }
+    } else {
+      finalFreeQty = 0;
+      finalPrice = item.price;
+    }
+
     const updatedCart = [...orderCart];
     updatedCart.push({
       itemId: item.id,
       description: item.name,
       qty: currentQty,
+      freeQty: finalFreeQty,
+      promoMode: hasPromo ? mode : undefined,
       um: item.um,
-      price: item.price,
-      subTotal: currentQty * item.price
+      price: finalPrice,
+      subTotal: currentQty * finalPrice
     });
 
     setOrderCart(updatedCart);
     setCurrentItemId('');
     setCurrentQty(1);
+  };
+
+  const handleCartPromoModeChange = (idx: number, mode: 'FREE' | 'DIVIDED') => {
+    const updated = [...orderCart];
+    updated[idx].promoMode = mode;
+
+    const item = items.find(i => i.id === updated[idx].itemId);
+    if (item) {
+      if (mode === 'FREE') {
+        const { freeQty } = calculateFreePromoQty(item, updated[idx].qty);
+        updated[idx].freeQty = freeQty || 0;
+        updated[idx].price = item.price;
+        updated[idx].subTotal = updated[idx].qty * item.price;
+      } else if (mode === 'DIVIDED') {
+        updated[idx].freeQty = 0;
+        const { price: divPrice } = calculateDividedPrice(item, updated[idx].qty);
+        updated[idx].price = divPrice;
+        updated[idx].subTotal = updated[idx].qty * divPrice;
+      }
+    }
+    setOrderCart(updated);
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -81,7 +129,7 @@ export default function SaleOrderManagement({
 
   const handleDeleteOrder = (id: string, orderNo: string) => {
     setConfirmState({
-      title: 'លុបការបញ្ជាទិញ / Delete Sales Order',
+      title: 'Delete Sales Order',
       message: `Are you sure you want to delete sales order ${orderNo}? This action is irreversible.`,
       onConfirm: () => {
         setSaleOrders(saleOrders.filter(so => so.id !== id));
@@ -138,7 +186,7 @@ export default function SaleOrderManagement({
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-cyan-400 font-bold" />
-            <span>Sale Orders Catalog / ការបញ្ជាទិញទំនិញ</span>
+            <span>Sale Orders Catalog</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1 pb-1">
             Build and issue sales orders to request warehouse deployments. Convert any active order into an invoice.
@@ -176,7 +224,7 @@ export default function SaleOrderManagement({
             {/* Metadata Fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Customer / ក្រុមហ៊ុន / ហាង *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Customer *</label>
                 <SearchableCustomerSelect
                   customers={customers}
                   selectedId={selectedCustomerId}
@@ -280,6 +328,7 @@ export default function SaleOrderManagement({
                       <th className="px-4 py-2.5">UM</th>
                       <th className="px-4 py-2.5 text-right">Unit Price</th>
                       <th className="px-4 py-2.5 text-center">Qty</th>
+                      <th className="px-4 py-2.5 text-center text-emerald-400">Free Qty</th>
                       <th className="px-4 py-2.5 text-right">Line Total</th>
                       <th className="px-4 py-2.5 text-center w-16">Remove</th>
                     </tr>
@@ -287,18 +336,58 @@ export default function SaleOrderManagement({
                   <tbody className="divide-y divide-white/5 text-slate-200">
                     {orderCart.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-6 text-slate-400 italic">
+                        <td colSpan={8} className="text-center py-6 text-slate-400 italic">
                           Cart is currently empty. Insert items above.
                         </td>
                       </tr>
                     ) : (
-                      orderCart.map((c, index) => (
-                        <tr key={index} className="hover:bg-white/5">
-                          <td className="px-4 py-2 text-slate-400">{index + 1}</td>
-                          <td className="px-4 py-2 font-medium text-white">{c.description}</td>
+                      orderCart.map((c, index) => {
+                        const origItem = items.find(it => it.id === c.itemId);
+                        const activeMode = c.promoMode || 'FREE';
+                        return (
+                          <tr key={index} className="hover:bg-white/5">
+                            <td className="px-4 py-2 text-slate-400">{index + 1}</td>
+                            <td className="px-4 py-2 font-medium text-white">
+                              <div>{c.description}</div>
+                              
+                              {origItem && origItem.promoPackages && origItem.promoPackages.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mr-0.5">Promo:</span>
+                                  
+                                  {/* FREE Mode Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCartPromoModeChange(index, 'FREE')}
+                                    className={`px-1 py-0.5 rounded text-[8px] font-bold border transition cursor-pointer ${
+                                      activeMode === 'FREE'
+                                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                                        : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                                    }`}
+                                  >
+                                    🎁 Free (FOC)
+                                  </button>
+
+                                  {/* DIVIDED Mode Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCartPromoModeChange(index, 'DIVIDED')}
+                                    className={`px-1 py-0.5 rounded text-[8px] font-bold border transition cursor-pointer ${
+                                      activeMode === 'DIVIDED'
+                                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                                        : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                                    }`}
+                                  >
+                                    ➗ Divided
+                                  </button>
+                                </div>
+                              )}
+                            </td>
                           <td className="px-4 py-2 text-slate-400">{c.um}</td>
                           <td className="px-4 py-2 text-right text-slate-300">${c.price.toFixed(2)}</td>
                           <td className="px-4 py-2 text-center font-bold text-cyan-300">{c.qty}</td>
+                          <td className="px-4 py-2 text-center text-emerald-400 font-bold font-mono">
+                            {c.freeQty && c.freeQty > 0 ? `+${c.freeQty}` : '-'}
+                          </td>
                           <td className="px-4 py-2 text-right font-semibold text-white">${c.subTotal.toFixed(2)}</td>
                           <td className="px-4 py-2 text-center">
                             <button
@@ -310,7 +399,8 @@ export default function SaleOrderManagement({
                             </button>
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -401,6 +491,7 @@ export default function SaleOrderManagement({
                   <th className="px-3 py-2">UM</th>
                   <th className="px-3 py-2 text-right">Price</th>
                   <th className="px-3 py-2 text-center">Qty</th>
+                  <th className="px-3 py-2 text-center text-emerald-400">Free Qty</th>
                   <th className="px-3 py-2 text-right">Line Total</th>
                 </tr>
               </thead>
@@ -408,10 +499,26 @@ export default function SaleOrderManagement({
                 {activeSO.items.map((line, idx) => (
                   <tr key={idx} className="border-b border-white/5 last:border-b-0">
                     <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                    <td className="px-3 py-2 font-medium text-white">{line.description}</td>
+                    <td className="px-3 py-2 font-medium text-white">
+                      <div>{line.description}</div>
+                      {line.freeQty && line.freeQty > 0 ? (
+                        <div className="text-[10px] text-emerald-400 font-sans flex items-center gap-1 mt-1">
+                          <span className="inline-block px-1 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold">🎁 PROMO APPLIED:</span>
+                          <span className="font-semibold text-emerald-300">
+                            {(() => {
+                              const origItem = items.find(it => it.id === line.itemId);
+                              return origItem ? calculateFreePromoQty(origItem, line.qty).label : '';
+                            })()}
+                          </span>
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-slate-400">{line.um}</td>
                     <td className="px-3 py-2 text-right text-slate-300">${line.price.toFixed(2)}</td>
                     <td className="px-3 py-2 text-center font-semibold text-cyan-300">{line.qty}</td>
+                    <td className="px-3 py-2 text-center text-emerald-400 font-bold font-mono">
+                      {line.freeQty && line.freeQty > 0 ? `+${line.freeQty}` : '-'}
+                    </td>
                     <td className="px-3 py-2 text-right font-bold text-white">${line.subTotal.toFixed(2)}</td>
                   </tr>
                 ))}
@@ -548,13 +655,13 @@ export default function SaleOrderManagement({
                 onClick={() => setConfirmState(null)}
                 className="px-4 py-2 border border-white/10 hover:bg-white/5 text-xs text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer font-sans"
               >
-                Cancel / បោះបង់
+                Cancel
               </button>
               <button
                 onClick={confirmState.onConfirm}
                 className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-rose-500/10 cursor-pointer font-sans"
               >
-                Confirm / យល់ព្រម
+                Confirm
               </button>
             </div>
           </motion.div>

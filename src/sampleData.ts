@@ -73,8 +73,32 @@ export const INITIAL_SALE_REPS: SaleRep[] = [
 ];
 
 export const INITIAL_ITEMS: Item[] = [
-  { id: 'i1', code: 'ITEM-AG1', name: 'Angkor Beer (Bottle 330ml)', description: 'Angkor Beer Case of 24 Bottles', um: 'Case', price: 12.50 },
-  { id: 'i2', code: 'ITEM-CB2', name: 'Cambodia Beer (Can 330ml)', description: 'Cambodia Beer Case of 24 Cans (ស្រាបៀរកម្ពុជា)', um: 'Case', price: 11.80 },
+  { 
+    id: 'i1', 
+    code: 'ITEM-AG1', 
+    name: 'Angkor Beer (Bottle 330ml)', 
+    description: 'Angkor Beer Case of 24 Bottles', 
+    um: 'Case', 
+    price: 12.50,
+    promoPackages: [
+      { buyQty: 100, freeQty: 32, packageName: 'ទិញ 100 ថែម 32 (Buy 100 Get 32 Free)' },
+      { buyQty: 50, freeQty: 15, packageName: 'ទិញ 50 ថែម 15 (Buy 50 Get 15 Free)' },
+      { buyQty: 10, freeQty: 2, packageName: 'ទិញ 10 ថែម 2 (Buy 10 Get 2 Free)' }
+    ]
+  },
+  { 
+    id: 'i2', 
+    code: 'ITEM-CB2', 
+    name: 'Cambodia Beer (Can 330ml)', 
+    description: 'Cambodia Beer Case of 24 Cans (ស្រាបៀរកម្ពុជា)', 
+    um: 'Case', 
+    price: 11.80,
+    promoPackages: [
+      { buyQty: 100, freeQty: 32, packageName: 'ទិញ 100 ថែម 32 (Buy 100 Get 32 Free)' },
+      { buyQty: 50, freeQty: 14, packageName: 'ទិញ 50 ថែម 14 (Buy 50 Get 14 Free)' },
+      { buyQty: 10, freeQty: 2, packageName: 'ទិញ 10 ថែម 2 (Buy 10 Get 2 Free)' }
+    ]
+  },
   { id: 'i3', code: 'ITEM-HN3', name: 'Hanuman Premium Lager', description: 'Hanuman Premium Case of 24 Cans (ស្រាបៀរហនុមាន)', um: 'Case', price: 13.50 },
   { id: 'i4', code: 'ITEM-CC4', name: 'Coca-Cola Classic (320ml)', description: 'Coca-Cola Original Taste Case of 24 Cans', um: 'Case', price: 8.20 },
   { id: 'i5', code: 'ITEM-VT5', name: 'Vital Mineral Water (500ml)', description: 'Vital Premium Mineral Water Box of 24 Bottles', um: 'Box', price: 3.50 },

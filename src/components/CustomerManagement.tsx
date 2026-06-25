@@ -61,6 +61,46 @@ export default function CustomerManagement({
     setFormOpen(false);
   };
 
+  const handleOpenCreateForm = () => {
+    resetForm();
+    if (viewMode === 'type') {
+      const codes = customerTypes.map(t => t.code.trim().toUpperCase());
+      let nextNum = 1;
+      codes.forEach(code => {
+        const match = code.match(/CT[-_]?0*(\d+)/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num >= nextNum) {
+            nextNum = num + 1;
+          }
+        }
+      });
+      if (nextNum === 1 && customerTypes.length > 0) {
+        nextNum = customerTypes.length + 1;
+      }
+      const paddedNum = String(nextNum).padStart(3, '0');
+      setTypeCode(`CT-${paddedNum}`);
+    } else {
+      const codes = customers.map(c => c.code.trim().toUpperCase());
+      let nextNum = 1;
+      codes.forEach(code => {
+        const match = code.match(/CUST[-_]?0*(\d+)/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num >= nextNum) {
+            nextNum = num + 1;
+          }
+        }
+      });
+      if (nextNum === 1 && customers.length > 0) {
+        nextNum = customers.length + 1;
+      }
+      const paddedNum = String(nextNum).padStart(3, '0');
+      setCustCode(`CUST-${paddedNum}`);
+    }
+    setFormOpen(true);
+  };
+
   // Save Customer Type
   const handleSaveType = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +138,7 @@ export default function CustomerManagement({
   // Delete Customer Type
   const handleDeleteType = (id: string) => {
     setConfirmState({
-      title: 'លុបប្រភេទអតិថិជន / Delete Customer Type',
+      title: 'Delete Customer Type',
       message: 'Are you sure you want to delete this customer type? Customers tied to this type will become uncategorized.',
       onConfirm: () => {
         setCustomerTypes(customerTypes.filter((t) => t.id !== id));
@@ -167,7 +207,7 @@ export default function CustomerManagement({
   // Delete Customer
   const handleDeleteCustomer = (id: string) => {
     setConfirmState({
-      title: 'លុបព័ត៌មានអតិថិជន / Delete Customer',
+      title: 'Delete Customer',
       message: 'Are you sure you want to delete this customer?',
       onConfirm: () => {
         setCustomers(customers.filter((c) => c.id !== id));
@@ -204,12 +244,12 @@ export default function CustomerManagement({
             {viewMode === 'type' ? (
               <>
                 <Layers className="w-5 h-5 text-cyan-400 font-bold" />
-                <span>Customer Type Registry / ការកំណត់ប្រភេទអតិថិជន</span>
+                <span>Customer Type Registry</span>
               </>
             ) : (
               <>
                 <UserCheck className="w-5 h-5 text-cyan-400 font-bold" />
-                <span>Customer Information Directory / ប្រវត្តិពណ៌នាអតិថិជន</span>
+                <span>Customer Information Directory</span>
               </>
             )}
           </h1>
@@ -223,7 +263,7 @@ export default function CustomerManagement({
         {/* Action Button */}
         {!formOpen && (
           <button
-            onClick={() => setFormOpen(true)}
+            onClick={handleOpenCreateForm}
             className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 font-semibold flex items-center gap-1.5 transition-all self-start cursor-pointer hover:-translate-y-0.5"
           >
             <Plus className="w-4 h-4" />
@@ -327,7 +367,7 @@ export default function CustomerManagement({
                   <input
                     type="text"
                     required
-                    placeholder="Seng Hour Shop (សេងហូ ហាង)"
+                    placeholder="Seng Hour Shop"
                     value={custName}
                     onChange={(e) => setCustName(e.target.value)}
                     className="w-full text-xs px-3 py-2 bg-white/10 border border-white/10 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none text-white rounded placeholder-slate-400"
@@ -377,10 +417,10 @@ export default function CustomerManagement({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">District (ខណ្ឌ / ស្រុក)</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">District</label>
                   <input
                     type="text"
-                    placeholder="e.g. Sen Sok (សែនសុខ)"
+                    placeholder="e.g. Sen Sok"
                     value={custDistrict}
                     onChange={(e) => setCustDistrict(e.target.value)}
                     className="w-full text-xs px-3 py-2 bg-white/10 border border-white/10 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none text-white rounded placeholder-slate-400"
@@ -573,13 +613,13 @@ export default function CustomerManagement({
                 onClick={() => setConfirmState(null)}
                 className="px-4 py-2 border border-white/10 hover:bg-white/5 text-xs text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer font-sans"
               >
-                Cancel / បោះបង់
+                Cancel
               </button>
               <button
                 onClick={confirmState.onConfirm}
                 className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-rose-500/10 cursor-pointer font-sans"
               >
-                Confirm / យល់ព្រម
+                Confirm
               </button>
             </div>
           </motion.div>

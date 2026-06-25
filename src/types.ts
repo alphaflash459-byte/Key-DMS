@@ -30,6 +30,12 @@ export interface SaleRep {
   phone: string;
 }
 
+export interface PromoPackage {
+  buyQty: number;      // Quantity to buy (e.g. 100)
+  freeQty: number;     // Free quantity rewarded (e.g. 32)
+  packageName: string; // Custom Khmer/English label, e.g., "ឈុតទិញ 100 ថែម 32"
+}
+
 export interface Item {
   id: string;
   code: string;
@@ -37,6 +43,7 @@ export interface Item {
   description: string;
   um: string; // Unit of Measure (e.g. Box, Case, Bottle, Pcs)
   price: number;
+  promoPackages?: PromoPackage[];
 }
 
 export interface InvoiceItem {
@@ -44,6 +51,8 @@ export interface InvoiceItem {
   description: string;
   otherField?: string;
   qty: number;
+  freeQty?: number;         // Free quantity awarded via packages
+  promoMode?: 'FREE' | 'DIVIDED'; // Promotion mode
   um: string;
   price: number;
   discountPercent: number; // item level discount
@@ -62,6 +71,8 @@ export interface SaleOrder {
     itemId: string;
     description: string;
     qty: number;
+    freeQty?: number;       // Free quantity awarded via packages
+    promoMode?: 'FREE' | 'DIVIDED'; // Promotion mode
     um: string;
     price: number;
     subTotal: number;

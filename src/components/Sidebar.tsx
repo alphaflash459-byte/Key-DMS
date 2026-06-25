@@ -258,7 +258,7 @@ export default function Sidebar({ currentView, onViewChange, user, onLogout }: S
           </div>
           <button
             onClick={onLogout}
-            title="Sign Out / ចាកចេញ"
+            title="Sign Out"
             className="p-1.5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />

@@ -130,7 +130,7 @@ export default function SalesReport({
       <div className="border-b border-white/10 pb-4">
         <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-cyan-400 font-bold" />
-          <span>Sales Intelligence Dashboard / វិភាគទិន្នន័យនៃការលក់</span>
+          <span>Sales Intelligence Dashboard</span>
         </h1>
         <p className="text-xs text-slate-350 mt-1">
           Monitor your real-time distribution performance, team billing tallies, and shop classifications.

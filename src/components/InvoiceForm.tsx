@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CustomerInfo, Warehouse, SaleRep, Item, SaleOrder, Invoice, InvoiceItem } from '../types';
+import { calculateFreePromoQty, calculateDividedPrice } from '../utils';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -11,7 +12,9 @@ import {
   Printer, 
   CheckCircle,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  ChevronDown,
+  Gift
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SearchableCustomerSelect } from './SearchableCustomerSelect';
@@ -60,7 +63,7 @@ export default function InvoiceForm({
   const [district, setDistrict] = useState('');
   
   const [remark, setRemark] = useState(
-    'សូមកុំភ្លេចទទួលយកបង្កាន់ដៃទទួលទឹកប្រាក់ និងចុះហត្ថលេខាឱ្យបានត្រឹមត្រូវ ដើម្បីបញ្ជាក់ពីការបង់ប្រាក់របស់លោកអ្នក;- ទំនិញដែលទិញរួចហើយមិនអាចដូរយកលុយវិញបានទេ'
+    'Please make sure to receive a receipt and sign properly to confirm your payment. Purchased goods are non-refundable.'
   );
 
   // Line row configuration
@@ -81,6 +84,9 @@ export default function InvoiceForm({
   
   // Memo
   const [memo, setMemo] = useState('');
+
+  // Sidebar collapsible panels (accordion behavior)
+  const [activePanel, setActivePanel] = useState<'customer' | 'vat' | 'summary' | null>('customer');
 
   // Notification notification
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -133,6 +139,7 @@ export default function InvoiceForm({
         description: item.description,
         otherField: 'SO IMPORT',
         qty: item.qty,
+        freeQty: item.freeQty || 0,
         um: item.um,
         price: item.price,
         discountPercent: 0,
@@ -177,16 +184,41 @@ export default function InvoiceForm({
     const item = items.find(i => i.id === itemId);
     if (!item) return;
 
+    const initialQty = 1;
+    const hasPromo = item.promoPackages && item.promoPackages.length > 0;
+    const isExact = hasPromo && item.promoPackages.some(p => p.buyQty > 0 && initialQty % p.buyQty === 0);
+    const mode = hasPromo ? (isExact ? 'FREE' : 'DIVIDED') : 'FREE';
+
+    let finalPrice = item.price;
+    let finalFreeQty = 0;
+
+    if (hasPromo) {
+      if (mode === 'FREE') {
+        const { freeQty } = calculateFreePromoQty(item, initialQty);
+        finalFreeQty = freeQty || 0;
+        finalPrice = item.price;
+      } else {
+        finalFreeQty = 0;
+        const { price: divPrice } = calculateDividedPrice(item, initialQty);
+        finalPrice = divPrice;
+      }
+    } else {
+      finalFreeQty = 0;
+      finalPrice = item.price;
+    }
+
     const newLine: InvoiceItem = {
       itemId: item.id,
       description: item.description || item.name,
       otherField: '',
-      qty: 1,
+      qty: initialQty,
+      freeQty: finalFreeQty,
+      promoMode: hasPromo ? mode : undefined,
       um: item.um,
-      price: item.price,
+      price: finalPrice,
       discountPercent: 0,
       vatPercent: type === 'TAX' ? 10 : 0,
-      subTotal: item.price
+      subTotal: finalPrice
     };
     setInvoiceLines([...invoiceLines, newLine]);
     setSelectedLineItemToAdd(''); // clear dropdown placeholder
@@ -195,9 +227,77 @@ export default function InvoiceForm({
   // Line modification functions
   const handleLineQtyChange = (idx: number, qty: number) => {
     const updated = [...invoiceLines];
-    updated[idx].qty = Math.max(1, qty);
+    const safeQty = Math.max(1, qty);
+    updated[idx].qty = safeQty;
+
+    // Dynamically calculate and apply free promo items or divided price
+    const item = items.find(i => i.id === updated[idx].itemId);
+    if (item) {
+      const hasPromo = item.promoPackages && item.promoPackages.length > 0;
+      if (hasPromo) {
+        // Auto-detect promo mode: if safeQty fits any package's buyQty perfectly, use FREE, otherwise DIVIDED
+        const isExact = item.promoPackages.some(p => p.buyQty > 0 && safeQty % p.buyQty === 0);
+        const mode = isExact ? 'FREE' : 'DIVIDED';
+        updated[idx].promoMode = mode;
+
+        if (mode === 'FREE') {
+          const { freeQty } = calculateFreePromoQty(item, safeQty);
+          updated[idx].freeQty = freeQty || 0;
+          updated[idx].price = item.price;
+        } else if (mode === 'DIVIDED') {
+          updated[idx].freeQty = 0;
+          const { price: divPrice } = calculateDividedPrice(item, safeQty);
+          updated[idx].price = divPrice;
+        }
+      } else {
+        updated[idx].promoMode = undefined;
+        updated[idx].freeQty = 0;
+        updated[idx].price = item.price;
+      }
+    }
+
     updated[idx].subTotal = calculateLineSubtotal(updated[idx]);
     setInvoiceLines(updated);
+  };
+
+  const handlePromoModeChange = (idx: number, mode: 'FREE' | 'DIVIDED') => {
+    const updated = [...invoiceLines];
+    updated[idx].promoMode = mode;
+
+    const item = items.find(i => i.id === updated[idx].itemId);
+    if (item) {
+      if (mode === 'FREE') {
+        const { freeQty } = calculateFreePromoQty(item, updated[idx].qty);
+        updated[idx].freeQty = freeQty || 0;
+        updated[idx].price = item.price; // reset to standard
+      } else if (mode === 'DIVIDED') {
+        updated[idx].freeQty = 0;
+        const { price: divPrice } = calculateDividedPrice(item, updated[idx].qty);
+        updated[idx].price = divPrice;
+      }
+    }
+
+    updated[idx].subTotal = calculateLineSubtotal(updated[idx]);
+    setInvoiceLines(updated);
+  };
+
+  const handlePromoPackageChange = (idx: number, pkgVal: string) => {
+    if (pkgVal === 'custom') return;
+    const updated = [...invoiceLines];
+    const item = items.find(i => i.id === updated[idx].itemId);
+    if (!item || !item.promoPackages) return;
+
+    const pkgIdx = parseInt(pkgVal, 10);
+    const promo = item.promoPackages[pkgIdx];
+    if (promo) {
+      updated[idx].qty = promo.buyQty;
+      // Always automatically set mode to 'FREE' and populate the free quantity
+      updated[idx].promoMode = 'FREE';
+      updated[idx].freeQty = promo.freeQty;
+      updated[idx].price = item.price;
+      updated[idx].subTotal = calculateLineSubtotal(updated[idx]);
+      setInvoiceLines(updated);
+    }
   };
 
   const handleLinePriceChange = (idx: number, price: number) => {
@@ -233,7 +333,7 @@ export default function InvoiceForm({
 
   const handleDeleteInvoice = (id: string, invoiceNumber: string) => {
     setConfirmState({
-      title: 'លុបវិក្កយបត្រ / Delete Invoice',
+      title: 'Delete Invoice',
       message: `Are you sure you want to delete invoice ${invoiceNumber}? This action is irreversible.`,
       onConfirm: () => {
         setInvoices(invoices.filter(i => i.id !== id));
@@ -406,7 +506,7 @@ export default function InvoiceForm({
       <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-sm uppercase tracking-wider text-white border-l-4 border-cyan-400 pl-2">
-            Workspace: {type === 'TAX' ? 'Tax Invoicing (វិក្កយបត្រពន្ធ)' : 'Invoice Non Tax (វិក្កយបត្រគ្មានពន្ធ)'}
+            Workspace: {type === 'TAX' ? 'Tax Invoicing' : 'Invoice Non Tax'}
           </span>
         </div>
 
@@ -469,88 +569,128 @@ export default function InvoiceForm({
               {/* Table rendering panel */}
               <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs font-mono border-collapse min-w-[800px]">
+                  <table className="w-full text-left text-[11px] font-mono border-collapse min-w-[720px]">
                     <thead>
-                      <tr className="bg-white/10 text-slate-300 text-[11px] font-bold uppercase border-b border-white/10">
-                        <th className="px-3 py-2.5 w-10 text-center">#</th>
-                        <th className="px-3 py-2.5">Items</th>
-                        <th className="px-3 py-2.5 min-w-[150px]">Description</th>
-                        <th className="px-3 py-2.5 w-24">Other Field</th>
-                        <th className="px-3 py-2.5 w-16 text-center">Qty</th>
-                        <th className="px-3 py-2.5 w-14 text-center">UM</th>
-                        <th className="px-3 py-2.5 w-24 text-right">Price</th>
-                        <th className="px-3 py-2.5 w-16 text-center">Disc (%)</th>
-                        <th className="px-3 py-2.5 w-16 text-center">VAT (%)</th>
-                        <th className="px-3 py-2.5 w-24 text-right">Sub Total</th>
-                        <th className="px-3 py-2.5 w-10 text-center">X</th>
+                      <tr className="bg-white/10 text-slate-300 text-[10px] font-bold uppercase border-b border-white/10">
+                        <th className="px-2 py-2 w-8 text-center">#</th>
+                        <th className="px-2 py-2 w-16">Items</th>
+                        <th className="px-2 py-2">Description</th>
+                        <th className="px-2 py-2 w-28 text-center">Promo Mode</th>
+                        <th className="px-2 py-2 w-44 text-center">Qty / Promo Package</th>
+                        <th className="px-2 py-2 w-16 text-center text-emerald-400">Free Qty</th>
+                        <th className="px-2 py-2 w-12 text-center">UM</th>
+                        <th className="px-2 py-2 w-20 text-right">Price</th>
+                        <th className="px-2 py-2 w-12 text-center">Disc (%)</th>
+                        <th className="px-2 py-2 w-12 text-center">VAT (%)</th>
+                        <th className="px-2 py-2 w-20 text-right">Sub Total</th>
+                        <th className="px-2 py-2 w-8 text-center">X</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-slate-200">
                       {invoiceLines.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="text-center py-10 text-slate-400 italic">
+                          <td colSpan={12} className="text-center py-10 text-slate-400 italic">
                             No items loaded in the invoice grid layout. Please select an item above or import a Sales Order.
                           </td>
                         </tr>
                       ) : (
                         invoiceLines.map((line, idx) => {
                           const originalItem = items.find(i => i.id === line.itemId);
+                          const activeMode = line.promoMode || 'FREE';
                           return (
                             <tr key={idx} className="hover:bg-white/5">
-                              <td className="px-3 py-2 text-center text-slate-400">{idx + 1}</td>
-                              <td className="px-3 py-2 text-cyan-300 font-bold">{originalItem ? originalItem.code : 'ITEM'}</td>
-                              <td className="px-3 py-2 text-white font-sans">{line.description}</td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="text"
-                                  placeholder="..."
-                                  value={line.otherField || ''}
-                                  onChange={(e) => handleLineOtherFieldChange(idx, e.target.value)}
-                                  className="w-full text-[10px] px-1.5 py-1 bg-white/10 border border-white/10 rounded text-center text-white outline-none focus:border-cyan-400 font-sans"
-                                />
+                              <td className="px-2 py-1.5 text-center text-slate-400">{idx + 1}</td>
+                              <td className="px-2 py-1.5 text-cyan-300 font-bold">{originalItem ? originalItem.code : 'ITEM'}</td>
+                              <td className="px-2 py-1.5 text-white font-sans">
+                                <div className="font-medium text-slate-100">{line.description}</div>
                               </td>
-                              <td className="px-3 py-2 text-center">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={line.qty}
-                                  onChange={(e) => handleLineQtyChange(idx, parseInt(e.target.value) || 1)}
-                                  className="w-14 text-center px-1.5 py-1 bg-white/10 border border-white/10 text-cyan-300 font-bold rounded focus:outline-none"
-                                />
+                               <td className="px-2 py-1 text-center">
+                                {originalItem && originalItem.promoPackages && originalItem.promoPackages.length > 0 ? (
+                                  <select
+                                    value={activeMode}
+                                    onChange={(e) => handlePromoModeChange(idx, e.target.value as 'FREE' | 'DIVIDED')}
+                                    className="text-[10px] w-full max-w-[90px] px-2 py-1 bg-slate-800 border border-white/10 rounded text-slate-200 outline-none focus:border-cyan-400 font-sans cursor-pointer text-center font-semibold"
+                                  >
+                                    <option value="FREE" className="bg-slate-800 text-white">🎁 Free (FOC)</option>
+                                    <option value="DIVIDED" className="bg-slate-800 text-white">➗ Divided</option>
+                                  </select>
+                                ) : (
+                                  <span className="text-slate-500 text-xs italic">-</span>
+                                )}
                               </td>
-                              <td className="px-3 py-2 text-center text-slate-400 font-semibold">{line.um}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-2 py-1.5 text-center">
+                                <div className="relative inline-block w-28 text-center">
+                                  <div className="relative flex items-center bg-white/10 border border-white/10 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 rounded-lg overflow-hidden h-8">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={line.qty}
+                                      onChange={(e) => handleLineQtyChange(idx, parseInt(e.target.value) || 1)}
+                                      className="w-full h-full bg-transparent text-center pl-2 pr-7 text-cyan-300 font-bold focus:outline-none text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      title="Type manual quantity"
+                                    />
+                                    
+                                    {originalItem && originalItem.promoPackages && originalItem.promoPackages.length > 0 && (
+                                      <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center bg-white/5 hover:bg-cyan-500/10 text-cyan-400 border-l border-white/10 transition-colors">
+                                        <select
+                                          value={
+                                            originalItem.promoPackages.findIndex(p => p.buyQty === line.qty) !== -1
+                                              ? String(originalItem.promoPackages.findIndex(p => p.buyQty === line.qty))
+                                              : 'custom'
+                                          }
+                                          onChange={(e) => handlePromoPackageChange(idx, e.target.value)}
+                                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                          title="Select a promotional package"
+                                        >
+                                          <option value="custom" className="bg-slate-900 text-slate-400">✍️ Custom</option>
+                                          {originalItem.promoPackages.map((promo, pIdx) => (
+                                            <option key={pIdx} value={pIdx} className="bg-slate-900 text-white font-sans text-xs">
+                                              Buy {promo.buyQty} +{promo.freeQty} Free
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <ChevronDown className="w-3.5 h-3.5 pointer-events-none" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-emerald-400 font-bold font-mono">
+                                {line.freeQty && line.freeQty > 0 ? `+${line.freeQty}` : '-'}
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-slate-400 font-semibold">{line.um}</td>
+                              <td className="px-2 py-1.5">
                                 <input
                                   type="number"
                                   step="0.01"
                                   value={line.price}
                                   onChange={(e) => handleLinePriceChange(idx, parseFloat(e.target.value) || 0)}
-                                  className="w-20 text-right px-1.5 py-1 bg-white/10 border border-white/10 text-white font-semibold rounded focus:outline-none"
+                                  className="w-16 text-right px-1 py-0.5 bg-white/10 border border-white/10 text-white font-semibold rounded focus:outline-none"
                                 />
                               </td>
-                              <td className="px-3 py-2 text-center">
+                              <td className="px-2 py-1.5 text-center">
                                 <input
                                   type="number"
                                   min={0}
                                   max={100}
                                   value={line.discountPercent}
                                   onChange={(e) => handleLineDiscountChange(idx, parseFloat(e.target.value) || 0)}
-                                  className="w-12 text-center px-1 py-0.5 bg-white/10 border border-white/10 text-amber-300 text-[11px] rounded"
+                                  className="w-10 text-center px-1 py-0.5 bg-white/10 border border-white/10 text-amber-300 text-[11px] rounded"
                                 />
                               </td>
-                              <td className="px-3 py-2 text-center">
+                              <td className="px-2 py-1.5 text-center">
                                 <input
                                   type="number"
                                   min={0}
                                   value={line.vatPercent}
                                   onChange={(e) => handleLineVatChange(idx, parseFloat(e.target.value) || 0)}
-                                  className="w-12 text-center px-1 py-0.5 bg-white/10 border border-white/10 text-purple-300 text-[11px] rounded"
+                                  className="w-10 text-center px-1 py-0.5 bg-white/10 border border-white/10 text-purple-300 text-[11px] rounded"
                                 />
                               </td>
-                              <td className="px-3 py-2 text-right font-bold text-white">
+                              <td className="px-2 py-1.5 text-right font-bold text-white">
                                 ${line.subTotal.toFixed(2)}
                               </td>
-                              <td className="px-3 py-2 text-center">
+                              <td className="px-2 py-1.5 text-center">
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveLine(idx)}
@@ -574,214 +714,262 @@ export default function InvoiceForm({
             <div className="lg:col-span-4 space-y-4">
               
               {/* Primary Customer & Invoice Info Fields */}
-              <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-xl backdrop-blur-md space-y-3.5 text-left relative z-30">
-                <span className="block text-xs font-bold text-cyan-300 uppercase tracking-widest border-b border-white/10 pb-1.5">
-                  Customer & Invoice / ព័ត៌មានអតិថិជន
-                </span>
+              <div className="bg-white/5 rounded-xl border border-white/10 shadow-xl backdrop-blur-md text-left relative z-30 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setActivePanel(activePanel === 'customer' ? null : 'customer')}
+                  className="w-full flex items-center justify-between p-4 select-none text-left focus:outline-none cursor-pointer hover:bg-white/5 transition-colors"
+                >
+                  <span className="text-xs font-bold text-cyan-300 uppercase tracking-widest">
+                    Customer & Invoice
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-cyan-400 transition-transform duration-200 ${activePanel === 'customer' ? 'rotate-180' : ''}`} />
+                </button>
 
-                {/* Customer */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-300 mb-1">
-                    Customer <span className="text-cyan-400 font-bold">*</span>
-                  </label>
-                  <SearchableCustomerSelect
-                    customers={customers}
-                    selectedId={selectedCustomerId}
-                    onChange={handleCustomerChange}
-                    required
-                  />
-                </div>
+                <motion.div
+                  initial={false}
+                  animate={{ height: activePanel === 'customer' ? 'auto' : 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-4 pt-0 space-y-3.5 border-t border-white/5">
+                    {/* Customer */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-300 mb-1">
+                        Customer <span className="text-cyan-400 font-bold">*</span>
+                      </label>
+                      <SearchableCustomerSelect
+                        customers={customers}
+                        selectedId={selectedCustomerId}
+                        onChange={handleCustomerChange}
+                        required
+                      />
+                    </div>
 
-                {/* Tel & Invoice No in 2-cols layout side by side */}
-                <div className="grid grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-300 mb-1">Tel / លេខទូរស័ព្ទ</label>
-                    <input
-                      type="text"
-                      readOnly
-                      placeholder="Phone account"
-                      value={tel}
-                      className="w-full text-xs px-2.5 py-1.5 bg-white/5 border border-white/5 rounded-lg outline-none cursor-not-allowed font-mono font-bold text-cyan-300"
-                    />
+                    {/* Tel & Invoice No in 2-cols layout side by side */}
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Tel</label>
+                        <input
+                          type="text"
+                          readOnly
+                          placeholder="Phone account"
+                          value={tel}
+                          className="w-full text-xs px-2.5 py-1.5 bg-white/5 border border-white/5 rounded-lg outline-none cursor-not-allowed font-mono font-bold text-cyan-300"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-[700] text-slate-300 mb-1"># Invoice No</label>
+                        <input
+                          type="text"
+                          value={invoiceNo}
+                          onChange={(e) => setInvoiceNo(e.target.value)}
+                          placeholder="INV-XXX"
+                          className="w-full text-xs px-2.5 py-1.5 bg-white/10 border border-white/10 rounded-lg font-bold font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Date & District side by side */}
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">
+                          Date <span className="text-cyan-450 font-bold">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                          className="w-full text-xs px-2.5 py-1.5 bg-white/10 border border-white/10 text-white rounded-lg font-semibold font-mono focus:outline-none focus:border-cyan-400 [color-scheme:dark]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">District</label>
+                        <SearchableCombo
+                          options={Array.from(new Set(customers.map(c => c.district).filter(Boolean))).map((dist) => ({
+                            value: dist,
+                            label: dist
+                          }))}
+                          value={district}
+                          onChange={(val) => setDistrict(val)}
+                          placeholder="Select district..."
+                        />
+                      </div>
+                    </div>
+
+                    {/* Warehouse */}
+                    <div>
+                      <label className="block text-[10px] font-[700] text-slate-300 mb-1">Warehouse</label>
+                      <SearchableCombo
+                        options={warehouses.map((w) => ({
+                          value: w.id,
+                          label: w.name,
+                          subLabel: w.location ? `Loc: ${w.location}` : undefined,
+                          rightLabel: w.code
+                        }))}
+                        value={warehouseId}
+                        onChange={(val) => setWarehouseId(val)}
+                        placeholder="Select warehouse..."
+                      />
+                    </div>
+
+                    {/* Sale Rep */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-300 mb-1">Sale Rep</label>
+                      <SearchableCombo
+                        options={saleReps.map((sr) => ({
+                          value: sr.id,
+                          label: sr.name,
+                          rightLabel: sr.code
+                        }))}
+                        value={saleRepId}
+                        onChange={(val) => setSaleRepId(val)}
+                        placeholder="---Please select---"
+                      />
+                    </div>
                   </div>
-
-                  <div>
-                    <label className="block text-[10px] font-[700] text-slate-300 mb-1"># Invoice No</label>
-                    <input
-                      type="text"
-                      value={invoiceNo}
-                      onChange={(e) => setInvoiceNo(e.target.value)}
-                      placeholder="INV-XXX"
-                      className="w-full text-xs px-2.5 py-1.5 bg-white/10 border border-white/10 rounded-lg font-bold font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Date & District side by side */}
-                <div className="grid grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-300 mb-1">
-                      Date <span className="text-cyan-450 font-bold">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="w-full text-xs px-2.5 py-1.5 bg-white/10 border border-white/10 text-white rounded-lg font-semibold font-mono focus:outline-none focus:border-cyan-400 [color-scheme:dark]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-300 mb-1">District / ស្រុក-ខណ្ឌ</label>
-                    <SearchableCombo
-                      options={Array.from(new Set(customers.map(c => c.district).filter(Boolean))).map((dist) => ({
-                        value: dist,
-                        label: dist
-                      }))}
-                      value={district}
-                      onChange={(val) => setDistrict(val)}
-                      placeholder="Select / ស្រុក..."
-                    />
-                  </div>
-                </div>
-
-                {/* Warehouse */}
-                <div>
-                  <label className="block text-[10px] font-[700] text-slate-300 mb-1">Warehouse / ឃ្លាំង</label>
-                  <SearchableCombo
-                    options={warehouses.map((w) => ({
-                      value: w.id,
-                      label: w.name,
-                      subLabel: w.location ? `Loc: ${w.location}` : undefined,
-                      rightLabel: w.code
-                    }))}
-                    value={warehouseId}
-                    onChange={(val) => setWarehouseId(val)}
-                    placeholder="Select warehouse..."
-                  />
-                </div>
-
-                {/* Sale Rep */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-300 mb-1">Sale Rep / ភ្នាក់ងារលក់</label>
-                  <SearchableCombo
-                    options={saleReps.map((sr) => ({
-                      value: sr.id,
-                      label: sr.name,
-                      rightLabel: sr.code
-                    }))}
-                    value={saleRepId}
-                    onChange={(val) => setSaleRepId(val)}
-                    placeholder="---Please select---"
-                  />
-                </div>
+                </motion.div>
               </div>
 
               {/* VAT & DISCOUNT CARD INPUTS */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 shadow-xl space-y-3 text-left">
-                <span className="block text-[11px] font-bold text-cyan-300 uppercase tracking-wide border-b border-white/10 pb-1.5">
-                  VAT & Discount (%)
-                </span>
+              <div className="bg-white/5 rounded-xl border border-white/10 shadow-xl text-left overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setActivePanel(activePanel === 'vat' ? null : 'vat')}
+                  className="w-full flex items-center justify-between p-4 select-none text-left focus:outline-none cursor-pointer hover:bg-white/5 transition-colors"
+                >
+                  <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wide">
+                    VAT & Discount (%)
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-cyan-400 transition-transform duration-200 ${activePanel === 'vat' ? 'rotate-180' : ''}`} />
+                </button>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">VAT(%)</label>
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={0}
-                      value={vatPercentGlobal}
-                      onChange={(e) => setVatPercentGlobal(parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
-                    />
-                  </div>
+                <motion.div
+                  initial={false}
+                  animate={{ height: activePanel === 'vat' ? 'auto' : 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-4 pt-0 space-y-3 border-t border-white/5">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">VAT(%)</label>
+                        <input
+                          type="number"
+                          step={0.1}
+                          min={0}
+                          value={vatPercentGlobal}
+                          onChange={(e) => setVatPercentGlobal(parseFloat(e.target.value) || 0)}
+                          className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">Discount (%)</label>
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={0}
-                      value={discountPercentGlobal}
-                      onChange={(e) => setDiscountPercentGlobal(parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
-                    />
-                  </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">Discount (%)</label>
+                        <input
+                          type="number"
+                          step={0.1}
+                          min={0}
+                          value={discountPercentGlobal}
+                          onChange={(e) => setDiscountPercentGlobal(parseFloat(e.target.value) || 0)}
+                          className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">Discount($)</label>
-                    <input
-                      type="number"
-                      step={0.01}
-                      min={0}
-                      value={discountValueGlobal}
-                      onChange={(e) => setDiscountValueGlobal(parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
-                    />
-                  </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">Discount($)</label>
+                        <input
+                          type="number"
+                          step={0.01}
+                          min={0}
+                          value={discountValueGlobal}
+                          onChange={(e) => setDiscountValueGlobal(parseFloat(e.target.value) || 0)}
+                          className="w-24 text-right px-2.5 py-1 bg-white/10 border border-white/10 text-white rounded text-xs font-mono font-bold"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">Deposit</label>
-                    <input
-                      type="number"
-                      step={0.01}
-                      min={0}
-                      value={deposit}
-                      onChange={(e) => setDeposit(parseFloat(e.target.value) || 0)}
-                      className="w-24 text-right px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-white rounded text-xs font-mono font-bold"
-                    />
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">Deposit</label>
+                        <input
+                          type="number"
+                          step={0.01}
+                          min={0}
+                          value={deposit}
+                          onChange={(e) => setDeposit(parseFloat(e.target.value) || 0)}
+                          className="w-24 text-right px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-white rounded text-xs font-mono font-bold"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               </div>
 
               {/* SUMMARY HIGHLIGHT BLOCK */}
-              <div className="bg-[#0f1d3a]/75 border border-cyan-500/25 rounded-xl p-4 shadow-xl space-y-3 backdrop-blur-md text-left">
-                <span className="block text-[11px] font-bold text-cyan-300 uppercase tracking-wide border-b border-white/10 pb-1.5">
-                  Invoice Summary
-                </span>
+              <div className="bg-[#0f1d3a]/75 border border-cyan-500/25 rounded-xl shadow-xl backdrop-blur-md text-left overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setActivePanel(activePanel === 'summary' ? null : 'summary')}
+                  className="w-full flex items-center justify-between p-4 select-none text-left focus:outline-none cursor-pointer hover:bg-cyan-500/5 transition-colors"
+                >
+                  <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wide">
+                    Invoice Summary
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-cyan-400 transition-transform duration-200 ${activePanel === 'summary' ? 'rotate-180' : ''}`} />
+                </button>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">Total</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={subTotalAmount.toFixed(3)}
-                      className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white shadow-inner focus:outline-none"
-                    />
-                  </div>
+                <motion.div
+                  initial={false}
+                  animate={{ height: activePanel === 'summary' ? 'auto' : 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-4 pt-0 space-y-3 border-t border-cyan-500/10">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">Total</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={subTotalAmount.toFixed(3)}
+                          className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white shadow-inner focus:outline-none"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">VAT ($)</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={vatAmountGlobal.toFixed(3)}
-                      className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white focus:outline-none"
-                    />
-                  </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">VAT ($)</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={vatAmountGlobal.toFixed(3)}
+                          className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white focus:outline-none"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-slate-300">Discount($)</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={discountAmountGlobal.toFixed(3)}
-                      className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white focus:outline-none"
-                    />
-                  </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-slate-300">Discount($)</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={discountAmountGlobal.toFixed(3)}
+                          className="w-32 text-right px-2.5 py-1 bg-white/5 border border-white/5 rounded text-xs font-mono font-bold text-white focus:outline-none"
+                        />
+                      </div>
 
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
-                    <label className="text-xs font-bold text-emerald-300">Grand Total</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={grandTotal.toFixed(3)}
-                      className="w-32 text-right px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded text-xs font-mono font-bold text-emerald-300 focus:outline-none"
-                    />
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                        <label className="text-xs font-bold text-emerald-300">Grand Total</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={grandTotal.toFixed(3)}
+                          className="w-32 text-right px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded text-xs font-mono font-bold text-emerald-300 focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               </div>
 
               {/* MEMO TEXT AREA */}
@@ -987,13 +1175,13 @@ export default function InvoiceForm({
                 onClick={() => setConfirmState(null)}
                 className="px-4 py-2 border border-white/10 hover:bg-white/5 text-xs text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer font-sans"
               >
-                Cancel / បោះបង់
+                Cancel
               </button>
               <button
                 onClick={confirmState.onConfirm}
                 className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-rose-500/10 cursor-pointer font-sans"
               >
-                Confirm / យល់ព្រម
+                Confirm
               </button>
             </div>
           </motion.div>

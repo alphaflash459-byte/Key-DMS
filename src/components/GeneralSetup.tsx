@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Warehouse, Item, DMSConfig, SaleRep } from '../types';
+import { createPortal } from 'react-dom';
+import { Warehouse, Item, DMSConfig, SaleRep, PromoPackage } from '../types';
 import { 
   Settings, 
   Layers, 
@@ -16,7 +17,8 @@ import {
   FileCheck,
   CheckCircle,
   AlertTriangle,
-  UserCheck
+  UserCheck,
+  ChevronDown
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -42,6 +44,8 @@ export default function GeneralSetup({
   setConfig
 }: GeneralSetupProps) {
   const [activeTab, setActiveTab] = useState<'items' | 'warehouses' | 'company' | 'sales'>('items');
+  const [expandedPromoId, setExpandedPromoId] = useState<string | null>(null);
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
@@ -57,6 +61,7 @@ export default function GeneralSetup({
   const [itemDesc, setItemDesc] = useState('');
   const [itemUm, setItemUm] = useState('Case');
   const [itemPrice, setItemPrice] = useState<number>(0);
+  const [itemPromos, setItemPromos] = useState<PromoPackage[]>([]);
 
   // --- WAREHOUSE FORM STATES ---
   const [whCode, setWhCode] = useState('');
@@ -83,6 +88,7 @@ export default function GeneralSetup({
     setItemDesc('');
     setItemUm('Case');
     setItemPrice(0);
+    setItemPromos([]);
     setWhCode('');
     setWhName('');
     setWhLoc('');
@@ -159,7 +165,8 @@ export default function GeneralSetup({
         name: itemName,
         description: itemDesc,
         um: itemUm,
-        price: itemPrice
+        price: itemPrice,
+        promoPackages: itemPromos
       } : it));
     } else {
       const newItem: Item = {
@@ -168,7 +175,8 @@ export default function GeneralSetup({
         name: itemName,
         description: itemDesc,
         um: itemUm,
-        price: itemPrice
+        price: itemPrice,
+        promoPackages: itemPromos
       };
       setItems([...items, newItem]);
     }
@@ -182,12 +190,13 @@ export default function GeneralSetup({
     setItemDesc(it.description);
     setItemUm(it.um);
     setItemPrice(it.price);
+    setItemPromos(it.promoPackages || []);
     setFormOpen(true);
   };
 
   const handleDeleteItem = (id: string) => {
     setConfirmState({
-      title: 'លុបមុខទំនិញ / Delete Inventory Item',
+      title: 'Delete Inventory Item',
       message: 'Are you sure you want to delete this inventory item reference?',
       onConfirm: () => {
         setItems(items.filter(i => i.id !== id));
@@ -232,7 +241,7 @@ export default function GeneralSetup({
 
   const handleDeleteWarehouse = (id: string) => {
     setConfirmState({
-      title: 'លុបឃ្លាំងម៉ាស៊ីន / Delete Warehouse Hub',
+      title: 'Delete Warehouse Hub',
       message: 'Are you sure you want to delete this warehouse hub?',
       onConfirm: () => {
         setWarehouses(warehouses.filter(w => w.id !== id));
@@ -299,7 +308,7 @@ export default function GeneralSetup({
 
   const handleDeleteSaleRep = (id: string, name: string) => {
     setConfirmState({
-      title: 'លុបព័ត៌មានភ្នាក់ងារលក់ / Delete Sales Rep',
+      title: 'Delete Sales Rep',
       message: `Are you sure you want to delete sales rep ${name}?`,
       onConfirm: () => {
         setSaleReps(saleReps.filter(sr => sr.id !== id));
@@ -364,7 +373,7 @@ export default function GeneralSetup({
             }`}
           >
             <UserCheck className="w-3.5 h-3.5" />
-            <span>Sales Setup / ភ្នាក់ងារលក់</span>
+            <span>Sales Setup</span>
           </button>
         </div>
       </div>
@@ -471,6 +480,91 @@ export default function GeneralSetup({
                 />
               </div>
 
+              {/* Wholesale Promo Packages Section */}
+              <div className="border border-white/10 rounded-xl p-3 bg-white/5 space-y-2 text-left">
+                <span className="block text-[11px] font-bold text-cyan-400 uppercase tracking-wide border-b border-white/10 pb-1.5 flex justify-between items-center font-sans">
+                  <span>កំណត់ឈុតកម្មវិធីលក់ថែម (Wholesale Promo Packages)</span>
+                  <span className="text-[9px] text-slate-400 font-normal font-sans">ទិញតាមចំនួនកំណត់ ថែមជូនទំនិញឥតគិតថ្លៃ</span>
+                </span>
+
+                {/* Inline Package Creator */}
+                <div className="flex items-end gap-2 pt-1 font-sans">
+                  <div className="flex-[2]">
+                    <label className="block text-[9px] text-slate-400 font-semibold mb-0.5">ទិញចំនួន (Buy Qty)</label>
+                    <input
+                      id="new-promo-buy-qty"
+                      type="number"
+                      min={1}
+                      placeholder="ឧ. 100"
+                      className="w-full text-xs px-2.5 py-1.5 bg-slate-950 border border-white/10 rounded-lg outline-none text-white focus:border-cyan-500/50"
+                    />
+                  </div>
+                  <div className="flex-[2]">
+                    <label className="block text-[9px] text-slate-400 font-semibold mb-0.5">ថែមជូនចំនួន (Free Qty)</label>
+                    <input
+                      id="new-promo-free-qty"
+                      type="number"
+                      min={1}
+                      placeholder="ឧ. 32"
+                      className="w-full text-xs px-2.5 py-1.5 bg-slate-950 border border-white/10 rounded-lg outline-none text-white focus:border-cyan-500/50 font-semibold text-emerald-400"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const buyQtyEl = document.getElementById('new-promo-buy-qty') as HTMLInputElement;
+                      const freeQtyEl = document.getElementById('new-promo-free-qty') as HTMLInputElement;
+                      if (!buyQtyEl || !freeQtyEl) return;
+                      const buyQty = parseInt(buyQtyEl.value);
+                      const freeQty = parseInt(freeQtyEl.value);
+                      if (buyQty > 0 && freeQty > 0) {
+                        if (itemPromos.some(p => p.buyQty === buyQty)) {
+                          alert('ចំនួនទិញនេះមានកំណត់ក្នុងឈុតរួចហើយ! (This buy quantity tier already exists)');
+                          return;
+                        }
+                        const labelText = `ទិញ ${buyQty} ថែម ${freeQty} (Buy ${buyQty} Get ${freeQty} Free)`;
+                        const updated = [...itemPromos, { buyQty, freeQty, packageName: labelText }].sort((a, b) => a.buyQty - b.buyQty);
+                        setItemPromos(updated);
+                        buyQtyEl.value = '';
+                        freeQtyEl.value = '';
+                      } else {
+                        alert('សូមបញ្ចូលចំនួនឱ្យបានត្រឹមត្រូវ! (Please enter valid quantities)');
+                      }
+                    }}
+                    className="flex-1 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-[11px] font-bold h-[32px] cursor-pointer whitespace-nowrap"
+                  >
+                    + បន្ថែមឈុត
+                  </button>
+                </div>
+
+                {/* Promo List */}
+                {itemPromos.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic text-center py-2 font-sans">
+                    មិនទាន់មានការកំណត់ឈុតថែមនៅឡើយទេ (No promotional packages configured yet for this item)
+                  </p>
+                ) : (
+                  <div className="max-h-32 overflow-y-auto space-y-1 pt-1.5">
+                    {itemPromos.map((promo, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-[11px] bg-white/5 border border-white/10 px-2.5 py-1.5 rounded-lg font-sans">
+                        <span className="font-medium text-slate-300">
+                          ទិញ <strong className="text-cyan-300 font-mono text-xs">{promo.buyQty}</strong> {itemUm} ថែមជូន <strong className="text-emerald-400 font-mono text-xs">{promo.freeQty}</strong> {itemUm}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Active</span>
+                          <button
+                            type="button"
+                            onClick={() => setItemPromos(itemPromos.filter((_, i) => i !== idx))}
+                            className="text-rose-450 hover:text-rose-400 cursor-pointer p-0.5 rounded hover:bg-white/10"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
@@ -503,7 +597,7 @@ export default function GeneralSetup({
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Depot Name / Hub *</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Depot Name *</label>
                   <input
                     type="text"
                     required
@@ -558,7 +652,7 @@ export default function GeneralSetup({
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Full Name / បុគ្គលិកលក់ *</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Full Name *</label>
                   <input
                     type="text"
                     required
@@ -571,7 +665,7 @@ export default function GeneralSetup({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Phone Number / លេខទូរស័ព្ទ</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Phone Number</label>
                 <input
                   type="text"
                   placeholder="e.g. 012 345 678"
@@ -587,13 +681,13 @@ export default function GeneralSetup({
                   onClick={resetForm}
                   className="px-4 py-2 border border-white/20 hover:bg-white/10 rounded-xl text-xs text-slate-300 hover:text-white transition-all cursor-pointer font-sans"
                 >
-                  Cancel / បោះបង់
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-cyan-550/10 font-sans"
                 >
-                  Save / រក្សាទុក
+                  Save
                 </button>
               </div>
             </form>
@@ -612,6 +706,7 @@ export default function GeneralSetup({
                   <th className="px-5 py-3 font-semibold font-sans">Item Label Name</th>
                   <th className="px-5 py-3 font-semibold font-sans text-slate-400">UM</th>
                   <th className="px-5 py-3 font-semibold font-sans text-right">Standard Price</th>
+                  <th className="px-5 py-3 font-semibold font-sans text-center">Promotional Packages</th>
                   <th className="px-5 py-3 font-semibold font-sans">Specifications</th>
                   <th className="px-5 py-3 text-right w-24">Modify</th>
                 </tr>
@@ -619,7 +714,7 @@ export default function GeneralSetup({
               <tbody className="divide-y divide-white/5 text-slate-300">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-slate-400 font-sans italic">
+                    <td colSpan={7} className="px-5 py-8 text-center text-slate-400 font-sans italic">
                       No stock items registered yet. Click the create button to provision system SKUs.
                     </td>
                   </tr>
@@ -630,6 +725,56 @@ export default function GeneralSetup({
                       <td className="px-5 py-3 font-medium text-white font-sans">{it.name}</td>
                       <td className="px-5 py-3 font-semibold text-slate-450 font-sans">{it.um}</td>
                       <td className="px-5 py-3 text-right font-bold text-emerald-300">${it.price.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-center relative z-20">
+                        {it.promoPackages && it.promoPackages.length > 0 ? (
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                if (expandedPromoId === it.id) {
+                                  setExpandedPromoId(null);
+                                  setTriggerRect(null);
+                                } else {
+                                  setExpandedPromoId(it.id);
+                                  setTriggerRect(e.currentTarget.getBoundingClientRect());
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-cyan-500/10 border border-cyan-500/25 hover:bg-cyan-500/20 text-cyan-300 transition-all cursor-pointer shadow-sm active:scale-95"
+                            >
+                              <span>{it.promoPackages.length} Packages</span>
+                              <ChevronDown className={`w-3.5 h-3.5 text-cyan-400 transition-transform duration-200 ${expandedPromoId === it.id ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {expandedPromoId === it.id && triggerRect && createPortal(
+                              <>
+                                <div className="fixed inset-0 z-[9999]" onClick={() => { setExpandedPromoId(null); setTriggerRect(null); }} />
+                                <div 
+                                  style={{
+                                    position: 'fixed',
+                                    top: `${triggerRect.bottom + 6}px`,
+                                    left: `${triggerRect.left + triggerRect.width / 2}px`,
+                                    transform: 'translateX(-50%)',
+                                  }}
+                                  className="w-48 bg-slate-950 border border-white/15 rounded-xl shadow-2xl py-1.5 z-[10000] backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-100 max-h-56 overflow-y-auto"
+                                >
+                                  <div className="px-3 py-1 border-b border-white/5 mb-1 text-left">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Promotional Offers</span>
+                                  </div>
+                                  {it.promoPackages.map((promo, pIdx) => (
+                                    <div key={pIdx} className="px-3 py-1.5 text-[11px] font-semibold text-cyan-300 hover:bg-white/5 flex items-center justify-between border-b border-white/5 last:border-0 font-sans">
+                                      <span>Buy {promo.buyQty}</span>
+                                      <span className="text-emerald-400 font-bold">Get {promo.freeQty} Free</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>,
+                              document.body
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-[10px] italic font-sans">No Promo Packages</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-[11px] font-sans text-slate-400 capitalize">{it.description}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2.5 font-sans">
@@ -868,13 +1013,13 @@ export default function GeneralSetup({
                 onClick={() => setConfirmState(null)}
                 className="px-4 py-2 border border-white/10 hover:bg-white/5 text-xs text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer font-sans"
               >
-                Cancel / បោះបង់
+                Cancel
               </button>
               <button
                 onClick={confirmState.onConfirm}
                 className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-rose-500/10 cursor-pointer font-sans"
               >
-                Confirm / យល់ព្រម
+                Confirm
               </button>
             </div>
           </motion.div>
