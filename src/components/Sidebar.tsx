@@ -42,8 +42,8 @@ export default function Sidebar({ currentView, onViewChange, user, onLogout, isO
           <Activity className="w-4 h-4 text-white animate-pulse" />
         </div>
         <div className="flex flex-col">
-          <span className="font-bold tracking-wider leading-none text-base">RAKOT TCS</span>
-          <span className="text-[10px] text-cyan-200 uppercase tracking-widest mt-0.5">Distribution System</span>
+          <span className="font-bold tracking-wider leading-none text-sm uppercase">Distribution</span>
+          <span className="text-[10px] text-cyan-200 uppercase tracking-widest mt-0.5">Management System</span>
         </div>
       </div>
 
@@ -272,21 +272,7 @@ export default function Sidebar({ currentView, onViewChange, user, onLogout, isO
         </div>
       )}
 
-      {/* Footer Details */}
-      <div className="bg-[#0d101d] border-t border-white/10 p-3 text-[10px] text-slate-400 font-mono flex flex-col gap-0.5">
-        <div className="flex justify-between items-center">
-          <span>App Mode:</span>
-          {user && user.uid !== 'demo_offline_user' ? (
-            <span className="text-emerald-400 font-bold">Google Cloud Sync</span>
-          ) : (
-            <span className="text-cyan-400 font-bold">Offline Persistent</span>
-          )}
-        </div>
-        <div className="flex justify-between items-center">
-          <span>Engine v2.4.0:</span>
-          <span className="text-slate-400">Active</span>
-        </div>
-      </div>
+
     </aside>
   );
 }

@@ -491,7 +491,7 @@ export default function InvoiceForm({
   };
 
   return (
-    <div id="invoice-workspace" className="p-4 max-w-7xl mx-auto space-y-4 font-sans text-white">
+    <div id="invoice-workspace" className="p-4 w-full space-y-4 font-sans text-white">
       
       {/* Alert toast notifications */}
       {alertMsg && (
@@ -810,7 +810,6 @@ export default function InvoiceForm({
                         options={warehouses.map((w) => ({
                           value: w.id,
                           label: w.name,
-                          subLabel: w.location ? `Loc: ${w.location}` : undefined,
                           rightLabel: w.code
                         }))}
                         value={warehouseId}
@@ -1061,13 +1060,6 @@ export default function InvoiceForm({
               <FileText className="w-4 h-4 text-cyan-400" />
               <span>Invoices Log Book ({type})</span>
             </h3>
-            
-            <button
-              onClick={resetAllFormValues}
-              className="text-white bg-blue-600 hover:bg-blue-500 font-semibold text-xs px-4 py-2 rounded-xl shadow-lg shadow-blue-500/25 cursor-pointer transition-all"
-            >
-              + Create Invoice Form
-            </button>
           </div>
 
           <div className="overflow-x-auto">

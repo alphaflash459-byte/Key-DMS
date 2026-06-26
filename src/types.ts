@@ -76,10 +76,30 @@ export interface SaleOrder {
     um: string;
     price: number;
     subTotal: number;
+    discountPercent?: number; // Optional row-level discount
+    vatPercent?: number;      // Optional row-level VAT
+    otherField?: string;
   }>;
   totalAmount: number;
   status: 'Pending' | 'Invoiced' | 'Cancelled';
   remark?: string;
+  
+  // Invoice compatibility fields
+  type?: 'TAX' | 'NON_TAX';
+  dueDate?: string;
+  contactPerson?: string;
+  tel?: string;
+  district?: string;
+  poNo?: string;
+  accountName?: string;
+  className?: string;
+  receiver?: string;
+  vatPercentGlobal?: number;
+  discountPercentGlobal?: number;
+  discountValueGlobal?: number;
+  deposit?: number;
+  grandTotal?: number;
+  memo?: string;
 }
 
 export interface Invoice {

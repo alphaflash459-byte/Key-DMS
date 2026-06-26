@@ -237,10 +237,10 @@ export const INITIAL_INVOICES: Invoice[] = [
 ];
 
 export const INITIAL_CONFIG: DMSConfig = {
-  companyName: 'RAKOT TCS Co., Ltd.',
+  companyName: 'Distribution Management System Co., Ltd.',
   companyTIN: 'K002-990182740',
   phone: '+855 (0) 23 888 777',
-  email: 'info@rakot-tcs.com.kh',
+  email: 'info@dms.com.kh',
   address: 'Building 12A, Russian Federation Blvd, Phnom Penh, Cambodia',
   currency: 'USD'
 };

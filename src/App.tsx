@@ -393,6 +393,7 @@ export default function App() {
               customers={customers}
               customerTypes={customerTypes}
               saleReps={saleReps}
+              items={items}
             />
           )}
 

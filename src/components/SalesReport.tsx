@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Invoice, CustomerInfo, CustomerType, SaleRep } from '../types';
+import { useMemo, useState } from 'react';
+import { Invoice, CustomerInfo, CustomerType, SaleRep, Item } from '../types';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -7,7 +7,11 @@ import {
   Users, 
   Award,
   ArrowUpRight,
-  TrendingDown
+  TrendingDown,
+  BarChart4,
+  ChevronDown,
+  Check,
+  Filter
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -30,13 +34,15 @@ interface SalesReportProps {
   customers: CustomerInfo[];
   customerTypes: CustomerType[];
   saleReps: SaleRep[];
+  items?: Item[];
 }
 
 export default function SalesReport({
   invoices,
   customers,
   customerTypes,
-  saleReps
+  saleReps,
+  items = []
 }: SalesReportProps) {
 
   // --- COMPUTE REALTIME ANALYTICS VARIABLES ---
@@ -63,26 +69,60 @@ export default function SalesReport({
     };
   }, [invoices]);
 
-  // --- CHART 1: REPS PERFORMANCE ANALYSIS ---
-  const repPerformanceData = useMemo(() => {
-    const dataMap: { [key: string]: number } = {};
-    
-    // Seed and loop
-    saleReps.forEach(r => { dataMap[r.name] = 0; });
-
+  // --- CHART 1: DAILY SALES TREND BY AGENT (LINE CHART SERIES) ---
+  const repLineChartData = useMemo(() => {
+    // 1. Gather all unique rep names
+    const repNamesSet = new Set<string>();
+    saleReps.forEach(r => {
+      repNamesSet.add(r.name);
+    });
     invoices.forEach(inv => {
       const matchedRep = saleReps.find(r => r.id === inv.saleRepId);
       if (matchedRep) {
-        dataMap[matchedRep.name] = (dataMap[matchedRep.name] || 0) + inv.grandTotal;
+        repNamesSet.add(matchedRep.name);
       } else if (inv.saleRepId) {
-        dataMap[inv.saleRepId] = (dataMap[inv.saleRepId] || 0) + inv.grandTotal;
+        repNamesSet.add(inv.saleRepId);
       }
     });
+    const uniqueReps = Array.from(repNamesSet);
 
-    return Object.keys(dataMap).map(repName => ({
-      name: repName.split(' (')[0], // trim Khmer labels for graphs
-      Sales: parseFloat(dataMap[repName].toFixed(2))
-    }));
+    // 2. Map date to rep sales values
+    const dateMap: { [date: string]: { [repName: string]: number } } = {};
+
+    invoices.forEach(inv => {
+      const dateStr = inv.date;
+      if (!dateMap[dateStr]) {
+        dateMap[dateStr] = {};
+        // Initialize with 0 for all reps on this date
+        uniqueReps.forEach(name => {
+          dateMap[dateStr][name] = 0;
+        });
+      }
+
+      const matchedRep = saleReps.find(r => r.id === inv.saleRepId);
+      const repName = matchedRep ? matchedRep.name : (inv.saleRepId || 'No Agent');
+      
+      dateMap[dateStr][repName] = (dateMap[dateStr][repName] || 0) + inv.grandTotal;
+    });
+
+    // 3. Format into a sorted list of data objects
+    const chartData = Object.keys(dateMap).map(date => {
+      const repValues = dateMap[date];
+      const formattedValues: { [key: string]: number } = {};
+      uniqueReps.forEach(name => {
+        formattedValues[name] = parseFloat((repValues[name] || 0).toFixed(2));
+      });
+
+      return {
+        date,
+        ...formattedValues
+      };
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return {
+      chartData,
+      uniqueReps
+    };
   }, [invoices, saleReps]);
 
   // --- CHART 2: CUSTOMER GROUP SPLIT PIE CHART ---
@@ -123,8 +163,107 @@ export default function SalesReport({
     }));
   }, [invoices]);
 
+  // --- METRIC STATE FOR SOLD PRODUCTS ---
+  const [productMetric, setProductMetric] = useState<'qty' | 'revenue'>('qty');
+  const [selectedProducts, setSelectedProducts] = useState<Record<string, boolean>>({});
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // --- REPS FILTER STATE ---
+  const [selectedReps, setSelectedReps] = useState<Record<string, boolean>>({});
+  const [isRepDropdownOpen, setIsRepDropdownOpen] = useState(false);
+
+  // --- HOVER STATE FOR LINE HIGHLIGHTS ---
+  const [hoveredProductLine, setHoveredProductLine] = useState<string | null>(null);
+  const [hoveredRepLine, setHoveredRepLine] = useState<string | null>(null);
+
+  const visibleRepsCount = useMemo(() => {
+    return repLineChartData.uniqueReps.filter(name => selectedReps[name] !== false).length;
+  }, [repLineChartData.uniqueReps, selectedReps]);
+
+  const totalRepsCount = repLineChartData.uniqueReps.length;
+
+  // --- CHART 4: DAILY SALES TREND BY PRODUCT (LINE CHART SERIES) ---
+  const productLineChartData = useMemo(() => {
+    // 1. Gather all unique product names that have been sold
+    const productNamesSet = new Set<string>();
+    invoices.forEach(inv => {
+      inv.items.forEach(item => {
+        let name = item.description || 'Unknown Item';
+        const matchedItem = items.find(i => i.id === item.itemId);
+        if (matchedItem) {
+          name = matchedItem.name;
+        }
+        productNamesSet.add(name);
+      });
+    });
+    const uniqueProducts = Array.from(productNamesSet);
+
+    // 2. Map date to product sales values
+    const dateMap: { [date: string]: { [productName: string]: number } } = {};
+
+    invoices.forEach(inv => {
+      const dateStr = inv.date;
+      if (!dateMap[dateStr]) {
+        dateMap[dateStr] = {};
+        // Initialize with 0 for all products on this date
+        uniqueProducts.forEach(name => {
+          dateMap[dateStr][name] = 0;
+        });
+      }
+
+      inv.items.forEach(item => {
+        let name = item.description || 'Unknown Item';
+        const matchedItem = items.find(i => i.id === item.itemId);
+        if (matchedItem) {
+          name = matchedItem.name;
+        }
+
+        const value = productMetric === 'qty' ? item.qty : item.subTotal;
+        dateMap[dateStr][name] += value;
+      });
+    });
+
+    // 3. Format into a sorted list of data objects
+    const chartData = Object.keys(dateMap).map(date => {
+      const itemValues = dateMap[date];
+      const formattedValues: { [key: string]: number } = {};
+      uniqueProducts.forEach(name => {
+        formattedValues[name] = parseFloat((itemValues[name] || 0).toFixed(2));
+      });
+
+      return {
+        date,
+        ...formattedValues
+      };
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return {
+      chartData,
+      uniqueProducts
+    };
+  }, [invoices, items, productMetric]);
+
+  const lineColors = [
+    '#10b981', // Emerald
+    '#06b6d4', // Cyan
+    '#f59e0b', // Amber
+    '#3b82f6', // Blue
+    '#ec4899', // Pink
+    '#8b5cf6', // Violet
+    '#f43f5e', // Rose
+    '#14b8a6', // Teal
+    '#ef4444', // Red
+    '#a855f7'  // Purple
+  ];
+
+  const visibleCount = useMemo(() => {
+    return productLineChartData.uniqueProducts.filter(name => selectedProducts[name] !== false).length;
+  }, [productLineChartData.uniqueProducts, selectedProducts]);
+
+  const totalCount = productLineChartData.uniqueProducts.length;
+
   return (
-    <div id="sales-dashboard-panel" className="p-6 max-w-7xl mx-auto space-y-6 font-sans select-none text-white">
+    <div id="sales-dashboard-panel" className="p-6 w-full space-y-6 font-sans select-none text-white">
       
       {/* Title */}
       <div className="border-b border-white/10 pb-4">
@@ -287,38 +426,380 @@ export default function SalesReport({
 
       {/* Bottom graph row: Sale Rep billing charts */}
       <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-4">
-        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest">
-            Sales agent Performance Leaderboard
-          </h3>
-          <span className="text-[11px] text-cyan-300 font-bold font-mono">Invoice Sales ($)</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/10 pb-3">
+          <div>
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest flex items-center gap-1.5">
+              <BarChart4 className="w-4 h-4 text-cyan-450" />
+              <span>របាយការណ៍លក់តាមកាលបរិច្ឆេទភ្នាក់ងារ / Agent Sales Trend by Date</span>
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Daily breakdown of total revenue generated by each sales representative over time.
+            </p>
+          </div>
+          <span className="text-[11px] text-cyan-300 font-bold font-mono self-start sm:self-auto">Invoice Sales ($)</span>
         </div>
 
-        <div className="h-64">
-          {repPerformanceData.length === 0 ? (
+        {/* Interactive filter dropdown for Reps */}
+        {repLineChartData.uniqueReps.length > 0 && (
+          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/5 p-3 rounded-xl border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="text-[11px] uppercase font-bold text-slate-400">បង្ហាញភ្នាក់ងារ / Sales Agents:</span>
+              
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsRepDropdownOpen(!isRepDropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-800 text-xs font-semibold rounded-lg border border-white/10 text-slate-200 transition-all cursor-pointer shadow-md min-w-[220px] justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>
+                      {visibleRepsCount === totalRepsCount 
+                        ? 'បង្ហាញទាំងអស់ (Show All)' 
+                        : visibleRepsCount === 0 
+                          ? 'លាក់ទាំងអស់ (Hidden All)' 
+                          : `បានជ្រើសរើស (${visibleRepsCount}/${totalRepsCount})`
+                      }
+                    </span>
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isRepDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isRepDropdownOpen && (
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsRepDropdownOpen(false)} 
+                    />
+                    
+                    <div className="absolute left-0 mt-1.5 w-72 bg-slate-900 border border-white/15 rounded-xl shadow-2xl p-3 space-y-2.5 z-20 backdrop-blur-lg">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ជម្រើសភ្នាក់ងារ / Options</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => setSelectedReps({})}
+                            className="px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-all"
+                          >
+                            បង្ហាញទាំងអស់
+                          </button>
+                          <button
+                            onClick={() => {
+                              const allHidden: Record<string, boolean> = {};
+                              repLineChartData.uniqueReps.forEach(repName => {
+                                allHidden[repName] = false;
+                              });
+                              setSelectedReps(allHidden);
+                            }}
+                            className="px-2 py-0.5 text-[9px] font-bold rounded bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 transition-all"
+                          >
+                            លាក់ទាំងអស់
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                        {repLineChartData.uniqueReps.map((repName, index) => {
+                          const isVisible = selectedReps[repName] !== false;
+                          const color = lineColors[index % lineColors.length];
+                          return (
+                            <button
+                              key={repName}
+                              onClick={() => {
+                                setSelectedReps(prev => ({
+                                  ...prev,
+                                  [repName]: !isVisible
+                                }));
+                              }}
+                              className={`flex items-center justify-between w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                isVisible 
+                                  ? 'bg-white/5 text-white hover:bg-white/10' 
+                                  : 'text-slate-500 hover:bg-white/5 hover:text-slate-400'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: isVisible ? color : '#475569' }}
+                                />
+                                <span className={`truncate ${isVisible ? '' : 'line-through'}`}>{repName}</span>
+                              </div>
+                              {isVisible ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                              ) : (
+                                <span className="w-3.5 h-3.5 border border-slate-700 rounded flex-shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Hovered Rep Name indicator */}
+            {hoveredRepLine && (
+              <div className="flex items-center gap-2 bg-cyan-500/10 px-3 py-1 rounded-lg border border-cyan-500/20 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                <span className="text-[11px] font-bold text-cyan-300">
+                  កំពុងមើលភ្នាក់ងារ៖ {hoveredRepLine}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="h-80">
+          {repLineChartData.chartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">
               No sales rep transactions accounted yet.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={repPerformanceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => `$${val}`} />
+              <LineChart
+                data={repLineChartData.chartData}
+                margin={{ top: 15, right: 30, left: 10, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" horizontal={true} vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => `$${val}`} />
                 <Tooltip 
+                  shared={false}
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                  formatter={(val) => [`$${val}`, 'Sales Total']} 
+                  formatter={(val) => [`$${val}`, 'Revenue']} 
                 />
-                <Bar dataKey="Sales" fill="#06b6d4" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                  {repPerformanceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill="#06b6d4" />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Legend 
+                  wrapperStyle={{ fontSize: '10px', paddingTop: '15px' }}
+                />
+                {repLineChartData.uniqueReps.map((repName, index) => {
+                  const isHovered = hoveredRepLine === repName;
+                  const isAnyHovered = hoveredRepLine !== null;
+                  return (
+                    <Line
+                      key={repName}
+                      type="monotone"
+                      dataKey={repName}
+                      stroke={lineColors[index % lineColors.length]}
+                      strokeWidth={isHovered ? 4.5 : isAnyHovered ? 1 : 2.5}
+                      strokeOpacity={!isAnyHovered || isHovered ? 1 : 0.15}
+                      activeDot={{ r: 6 }}
+                      dot={isHovered ? { r: 5 } : { r: 2 }}
+                      hide={selectedReps[repName] === false}
+                      onMouseEnter={() => setHoveredRepLine(repName)}
+                      onMouseLeave={() => setHoveredRepLine(null)}
+                    />
+                  );
+                })}
+              </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
+
+        {/* Sales Trend by Date Chart */}
+        <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/10 pb-3">
+            <div>
+              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-widest flex items-center gap-1.5">
+                <BarChart4 className="w-4 h-4 text-emerald-450" />
+                <span>របាយការណ៍លក់តាមកាលបរិច្ឆេទ / Sales Trend by Date</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Daily breakdown of total quantity sold or revenue generated over time.
+              </p>
+            </div>
+            
+            {/* Toggle buttons */}
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5 self-start">
+              <button
+                onClick={() => setProductMetric('qty')}
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                  productMetric === 'qty'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                តាមចំនួនលក់ (Qty)
+              </button>
+              <button
+                onClick={() => setProductMetric('revenue')}
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${
+                  productMetric === 'revenue'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                តាមចំណូលសរុប (Revenue)
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive filter dropdown */}
+          {productLineChartData.uniqueProducts.length > 0 && (
+            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/5 p-3 rounded-xl border border-white/5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="text-[11px] uppercase font-bold text-slate-400">បង្ហាញទំនិញ / Products:</span>
+                
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 hover:bg-slate-800 text-xs font-semibold rounded-lg border border-white/10 text-slate-200 transition-all cursor-pointer shadow-md min-w-[220px] justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>
+                        {visibleCount === totalCount 
+                          ? 'បង្ហាញទាំងអស់ (Show All)' 
+                          : visibleCount === 0 
+                            ? 'លាក់ទាំងអស់ (Hidden All)' 
+                            : `បានជ្រើសរើស (${visibleCount}/${totalCount})`
+                        }
+                      </span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isDropdownOpen && (
+                    <>
+                      {/* Backdrop to close dropdown */}
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setIsDropdownOpen(false)} 
+                      />
+                      
+                      <div className="absolute left-0 mt-1.5 w-72 bg-slate-900 border border-white/15 rounded-xl shadow-2xl p-3 space-y-2.5 z-20 backdrop-blur-lg">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ជម្រើសទំនិញ / Options</span>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => setSelectedProducts({})}
+                              className="px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-all"
+                            >
+                              បង្ហាញទាំងអស់
+                            </button>
+                            <button
+                              onClick={() => {
+                                const allHidden: Record<string, boolean> = {};
+                                productLineChartData.uniqueProducts.forEach(name => {
+                                  allHidden[name] = false;
+                                });
+                                setSelectedProducts(allHidden);
+                              }}
+                              className="px-2 py-0.5 text-[9px] font-bold rounded bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 transition-all"
+                            >
+                              លាក់ទាំងអស់
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                          {productLineChartData.uniqueProducts.map((prodName, index) => {
+                            const isVisible = selectedProducts[prodName] !== false;
+                            const color = lineColors[index % lineColors.length];
+                            return (
+                              <button
+                                key={prodName}
+                                onClick={() => {
+                                  setSelectedProducts(prev => ({
+                                    ...prev,
+                                    [prodName]: !isVisible
+                                  }));
+                                }}
+                                className={`flex items-center justify-between w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                  isVisible 
+                                    ? 'bg-white/5 text-white hover:bg-white/10' 
+                                    : 'text-slate-500 hover:bg-white/5 hover:text-slate-400'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: isVisible ? color : '#475569' }}
+                                  />
+                                  <span className={`truncate ${isVisible ? '' : 'line-through'}`}>{prodName}</span>
+                                </div>
+                                {isVisible ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                                ) : (
+                                  <span className="w-3.5 h-3.5 border border-slate-700 rounded flex-shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Hovered Product Name indicator */}
+              {hoveredProductLine && (
+                <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span className="text-[11px] font-bold text-emerald-300">
+                    កំពុងមើលទំនិញ៖ {hoveredProductLine}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="h-80">
+            {productLineChartData.chartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">
+                No sales recorded yet. Add invoices with items first.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={productLineChartData.chartData}
+                  margin={{ top: 15, right: 30, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" horizontal={true} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                  <YAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => productMetric === 'qty' ? `${val}` : `$${val}`} />
+                  <Tooltip
+                    shared={false}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
+                    formatter={(value) => {
+                      if (productMetric === 'qty') {
+                        return [`${value} cases`, 'Quantity Sold'];
+                      } else {
+                        return [`$${value}`, 'Revenue'];
+                      }
+                    }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: '10px', paddingTop: '15px' }}
+                  />
+                  {productLineChartData.uniqueProducts.map((prodName, index) => {
+                    const isHovered = hoveredProductLine === prodName;
+                    const isAnyHovered = hoveredProductLine !== null;
+                    return (
+                      <Line
+                        key={prodName}
+                        type="monotone"
+                        dataKey={prodName}
+                        stroke={lineColors[index % lineColors.length]}
+                        strokeWidth={isHovered ? 4.5 : isAnyHovered ? 1 : 2.5}
+                        strokeOpacity={!isAnyHovered || isHovered ? 1 : 0.15}
+                        activeDot={{ r: 6 }}
+                        dot={isHovered ? { r: 5 } : { r: 2 }}
+                        hide={selectedProducts[prodName] === false}
+                        onMouseEnter={() => setHoveredProductLine(prodName)}
+                        onMouseLeave={() => setHoveredProductLine(null)}
+                      />
+                    );
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB-Vm_fcJxb06GQ9a0QTX5LTW2o8JJdMXQ",
@@ -13,4 +13,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, "ai-studio-a638c87c-4fc2-4a27-a53d-eee68a34d9f1");
+
+// Use initializeFirestore with persistent local cache and long-polling to support robust iframe connectivity and offline capabilities.
+// This handles any network drops, sandbox iFrame WebSocket blocks, and "could not reach Cloud Firestore backend" gracefully.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  }),
+  experimentalForceLongPolling: true
+}, "ai-studio-a638c87c-4fc2-4a27-a53d-eee68a34d9f1");
+

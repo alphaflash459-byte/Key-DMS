@@ -72,11 +72,11 @@ export default function AuthScreen({ onSuccess, onDemoMode }: AuthScreenProps) {
           <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center border border-white/20 shadow-xl mb-4">
             <Activity className="w-8 h-8 text-white animate-pulse" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-wider bg-gradient-to-r from-white via-slate-100 to-cyan-300 bg-clip-text text-transparent uppercase">
-            RAKOT TCS
+          <h1 className="text-xl font-extrabold tracking-widest bg-gradient-to-r from-white via-slate-100 to-cyan-300 bg-clip-text text-transparent uppercase">
+            DISTRIBUTION
           </h1>
-          <p className="text-cyan-300 text-[10px] uppercase tracking-widest mt-1 font-semibold">
-            Distribution Management System
+          <p className="text-cyan-300 text-[10px] uppercase tracking-widest mt-1 font-bold">
+            Management System
           </p>
           <div className="w-12 h-[2px] bg-cyan-500/35 mt-3.5 mb-2 rounded-full"></div>
           <p className="text-slate-400 text-xs">

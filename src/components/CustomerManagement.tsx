@@ -236,7 +236,7 @@ export default function CustomerManagement({
   });
 
   return (
-    <div id="customer-mgmt" className="p-6 max-w-7xl mx-auto space-y-6 font-sans text-white">
+    <div id="customer-mgmt" className="p-6 w-full space-y-6 font-sans text-white">
       {/* Title block with Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
         <div>

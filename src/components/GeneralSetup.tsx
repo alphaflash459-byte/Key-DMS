@@ -320,7 +320,7 @@ export default function GeneralSetup({
   };
 
   return (
-    <div id="general-systems-panel" className="p-6 max-w-7xl mx-auto space-y-6 font-sans text-white select-none">
+    <div id="general-systems-panel" className="p-6 w-full space-y-6 font-sans text-white select-none">
       
       {/* Upper header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
