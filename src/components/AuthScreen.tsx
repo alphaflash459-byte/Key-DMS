@@ -44,7 +44,7 @@ export default function AuthScreen({ onSuccess, onDemoMode }: AuthScreenProps) {
       } else if (errCode === 'auth/popup-closed-by-user') {
         errorMsg = 'The login popup was closed before completion. Please try again.';
       } else if (errCode === 'auth/operation-not-allowed') {
-        errorMsg = 'Google Sign-In is not enabled yet in your Firebase Project. Please enable it in Firebase Console > Authentication > Sign-in method, or click "Demo Mode" below to continue offline.';
+        errorMsg = 'Google Sign-In is not enabled yet in your Firebase Project. Please enable it in Firebase Console > Authentication > Sign-in method, or click "Local Storage" below to continue offline.';
       } else if (errCode === 'auth/network-request-failed') {
         errorMsg = 'Network connection failed. Please check your internet connection.';
       }
@@ -144,7 +144,7 @@ export default function AuthScreen({ onSuccess, onDemoMode }: AuthScreenProps) {
               className="w-full py-2 bg-slate-800 hover:bg-slate-700 active:scale-[0.98] text-cyan-300 hover:text-cyan-200 border border-cyan-500/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-indigo-500/5 shadow-inner"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Demo Mode
+              Local Storage
             </button>
           </div>
         )}

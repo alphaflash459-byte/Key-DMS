@@ -290,8 +290,8 @@ export default function App() {
         onDemoMode={() => {
           setDemoUser({
             uid: 'demo_offline_user',
-            email: 'demo@rakottcs.com',
-            displayName: 'Demo (Offline Mode)'
+            email: 'local@storage.com',
+            displayName: 'Local Storage'
           });
         }} 
       />
